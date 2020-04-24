@@ -16,12 +16,14 @@ type heartbeatStop struct {
 	getRunner     func(string) (AllocRunner, error)
 	logger        hclog.InterceptLogger
 	state         state.StateDB
+	shutdownCh    chan struct{}
 }
 
 func newHeartbeatStop(
 	state state.StateDB,
 	getRunner func(string) (AllocRunner, error),
-	logger hclog.InterceptLogger) *heartbeatStop {
+	logger hclog.InterceptLogger,
+	shutdownCh chan struct{}) *heartbeatStop {
 
 	h := &heartbeatStop{
 		allocInterval: make(map[string]time.Duration),
@@ -29,6 +31,7 @@ func newHeartbeatStop(
 		getRunner:     getRunner,
 		logger:        logger,
 		state:         state,
+		shutdownCh:    shutdownCh,
 	}
 
 	if state != nil {
@@ -100,6 +103,9 @@ func (h *heartbeatStop) watch() {
 
 		case <-timeout:
 			checkAllocs = true
+
+		case <-h.shutdownCh:
+			return
 		}
 
 		if !checkAllocs {

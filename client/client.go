@@ -372,7 +372,7 @@ func NewClient(cfg *config.Config, consulCatalog consul.CatalogAPI, consulServic
 		})
 
 	// create heartbeatStop, and restore its previous state from the state store. Post init for the stateDB
-	c.heartbeatStop = newHeartbeatStop(c.stateDB, c.getAllocRunner, logger)
+	c.heartbeatStop = newHeartbeatStop(c.stateDB, c.getAllocRunner, logger, c.shutdownCh)
 
 	// Setup the clients RPC server
 	c.setupClientRpc()
