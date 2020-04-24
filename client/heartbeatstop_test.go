@@ -54,7 +54,7 @@ func TestHearbeatStop_allocHook(t *testing.T) {
 	err = client.addAlloc(alloc, "")
 	require.NoError(t, err)
 	testutil.WaitForResult(func() (bool, error) {
-		_, ok := client.heartbeatStop.allocs[alloc.ID]
+		_, ok := client.heartbeatStop.allocInterval[alloc.ID]
 		return ok, nil
 	}, func(err error) {
 		require.NoError(t, err)
@@ -62,7 +62,7 @@ func TestHearbeatStop_allocHook(t *testing.T) {
 
 	// the tiny lease causes the watch loop to destroy it
 	testutil.WaitForResult(func() (bool, error) {
-		_, ok := client.heartbeatStop.allocs[alloc.ID]
+		_, ok := client.heartbeatStop.allocInterval[alloc.ID]
 		return !ok, nil
 	}, func(err error) {
 		require.NoError(t, err)

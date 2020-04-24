@@ -10,12 +10,12 @@ import (
 )
 
 type heartbeatStop struct {
-	lastOk      time.Time
-	allocs      map[string]time.Duration
-	allocHookCh chan *structs.Allocation
-	getRunner   func(string) (AllocRunner, error)
-	logger      hclog.InterceptLogger
-	state       state.StateDB
+	lastOk        time.Time
+	allocInterval map[string]time.Duration
+	allocHookCh   chan *structs.Allocation
+	getRunner     func(string) (AllocRunner, error)
+	logger        hclog.InterceptLogger
+	state         state.StateDB
 }
 
 func newHeartbeatStop(
@@ -24,11 +24,11 @@ func newHeartbeatStop(
 	logger hclog.InterceptLogger) *heartbeatStop {
 
 	h := &heartbeatStop{
-		allocs:      make(map[string]time.Duration),
-		allocHookCh: make(chan *structs.Allocation),
-		getRunner:   getRunner,
-		logger:      logger,
-		state:       state,
+		allocInterval: make(map[string]time.Duration),
+		allocHookCh:   make(chan *structs.Allocation),
+		getRunner:     getRunner,
+		logger:        logger,
+		state:         state,
 	}
 
 	if state != nil {
@@ -75,7 +75,7 @@ func (h *heartbeatStop) watch() {
 	for {
 		// minimize the interval
 		interval = 5 * time.Second
-		for _, t := range h.allocs {
+		for _, t := range h.allocInterval {
 			if t < interval {
 				interval = t
 			}
@@ -90,12 +90,12 @@ func (h *heartbeatStop) watch() {
 				h.logger.Warn("stopping alloc %s on heartbeat timeout failed: %v", allocID, err)
 				continue
 			}
-			delete(h.allocs, allocID)
+			delete(h.allocInterval, allocID)
 
 		case alloc := <-h.allocHookCh:
 			tg := allocTaskGroup(alloc)
 			if tg.StopAfterClientDisconnect != nil {
-				h.allocs[alloc.ID] = *tg.StopAfterClientDisconnect
+				h.allocInterval[alloc.ID] = *tg.StopAfterClientDisconnect
 			}
 
 		case <-timeout:
@@ -107,7 +107,7 @@ func (h *heartbeatStop) watch() {
 		}
 
 		now = time.Now()
-		for allocID, d := range h.allocs {
+		for allocID, d := range h.allocInterval {
 			if now.After(h.lastOk.Add(d)) {
 				stop <- allocID
 			}
