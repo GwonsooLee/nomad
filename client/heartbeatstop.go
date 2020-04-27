@@ -2,6 +2,7 @@ package client
 
 import (
 	"fmt"
+	"sync"
 	"time"
 
 	hclog "github.com/hashicorp/go-hclog"
@@ -17,6 +18,7 @@ type heartbeatStop struct {
 	logger        hclog.InterceptLogger
 	state         state.StateDB
 	shutdownCh    chan struct{}
+	lock          *sync.RWMutex
 }
 
 func newHeartbeatStop(
@@ -32,6 +34,7 @@ func newHeartbeatStop(
 		logger:        logger,
 		state:         state,
 		shutdownCh:    shutdownCh,
+		lock:          &sync.RWMutex{},
 	}
 
 	if state != nil {
@@ -123,9 +126,21 @@ func (h *heartbeatStop) watch() {
 
 // setLastOk sets the last known good heartbeat time to the current time, and persists that time to disk
 func (h *heartbeatStop) setLastOk() error {
+	h.lock.Lock()
+	defer h.lock.Unlock()
 	t := time.Now()
 	h.lastOk = t
+	// We may encounter an error here, but want to update the running time
+	// unconditionally, since we'll actively terminate stateful tasks if it ages too
+	// much. We only use the state value when restarting the client itself after a
+	// crash, so it's better to update the runtime value and have the stored value stale
 	return h.state.PutLastHeartbeatOk(t)
+}
+
+func (h *heartbeatStop) getLastOk() time.Time {
+	h.lock.RLock()
+	defer h.lock.RUnlock()
+	return h.lastOk
 }
 
 // stopAlloc actually stops the allocation

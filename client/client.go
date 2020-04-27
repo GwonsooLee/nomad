@@ -1551,7 +1551,7 @@ func (c *Client) registerAndHeartbeat() {
 }
 
 func (c *Client) lastHeartbeat() time.Time {
-	return c.heartbeatStop.lastOk
+	return c.heartbeatStop.getLastOk()
 }
 
 // getHeartbeatRetryIntv is used to retrieve the time to wait before attempting
