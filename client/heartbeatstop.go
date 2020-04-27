@@ -1,7 +1,6 @@
 package client
 
 import (
-	"fmt"
 	"sync"
 	"time"
 
@@ -151,13 +150,7 @@ func (h *heartbeatStop) stopAlloc(allocID string) error {
 	}
 
 	runner.Destroy()
-	timeout := time.After(5 * time.Second)
-	select {
-	case <-runner.DestroyCh():
-		return nil
-	case <-timeout:
-		return fmt.Errorf("allocation destroy for %s timed out", allocID)
-	}
+	return nil
 }
 
 func allocTaskGroup(alloc *structs.Allocation) *structs.TaskGroup {
