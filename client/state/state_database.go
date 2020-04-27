@@ -670,14 +670,16 @@ func (s *BoltStateDB) PutLastHeartbeatOk(t time.Time) error {
 		if err != nil {
 			return err
 		}
-		return dynamicBkt.Put(lastHeartbeatOkKey, &t)
+
+		return dynamicBkt.Put(lastHeartbeatOkKey, t.Unix())
 	})
 }
 
 // GetLastHeartbeatOk stores the dynamic plugin registry's
 // registry state or returns an error.
-func (s *BoltStateDB) GetLastHeartbeatOk() (t *time.Time, err error) {
-	err = s.db.View(func(tx *boltdd.Tx) error {
+func (s *BoltStateDB) GetLastHeartbeatOk() (time.Time, error) {
+	var unix int64
+	err := s.db.View(func(tx *boltdd.Tx) error {
 		dynamicBkt := tx.Bucket(lastHeartbeatOkBucket)
 		if dynamicBkt == nil {
 			// No state, return
@@ -685,23 +687,23 @@ func (s *BoltStateDB) GetLastHeartbeatOk() (t *time.Time, err error) {
 		}
 
 		// Restore Plugin State if it exists
-		if err := dynamicBkt.Get(lastHeartbeatOkKey, t); err != nil {
+		if err := dynamicBkt.Get(lastHeartbeatOkKey, unix); err != nil {
 			if !boltdd.IsErrNotFound(err) {
 				return fmt.Errorf("failed to read last heartbeat state: %v", err)
 			}
 
 			// Key not found, reset output to nil
-			t = nil
+			unix = 0
 		}
 
 		return nil
 	})
 
 	if err != nil {
-		return nil, err
+		return time.Time{}, err
 	}
 
-	return t, nil
+	return time.Unix(unix, 0), nil
 }
 
 // init initializes metadata entries in a newly created state database.

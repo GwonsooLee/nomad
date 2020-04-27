@@ -38,8 +38,8 @@ func newHeartbeatStop(
 
 	if state != nil {
 		lastOk, err := state.GetLastHeartbeatOk()
-		if err == nil && lastOk != nil {
-			h.lastOk = *lastOk
+		if err == nil && !lastOk.IsZero() {
+			h.lastOk = lastOk
 		}
 	}
 

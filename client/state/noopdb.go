@@ -85,8 +85,8 @@ func (n NoopDB) PutLastHeartbeatOk(t time.Time) error {
 	return nil
 }
 
-func (n NoopDB) GetLastHeartbeatOk() (*time.Time, error) {
-	return nil, nil
+func (n NoopDB) GetLastHeartbeatOk() (time.Time, error) {
+	return time.Time{}, nil
 }
 
 func (n NoopDB) Close() error {

@@ -79,7 +79,7 @@ type StateDB interface {
 	PutDynamicPluginRegistryState(state *dynamicplugins.RegistryState) error
 
 	// GetLastHeartbeatOk retrieves the stored last known good heartbeat
-	GetLastHeartbeatOk() (*time.Time, error)
+	GetLastHeartbeatOk() (time.Time, error)
 
 	// PutLastHeartbeatOk stores the last heartbeat known to have made the round trip to
 	// the server

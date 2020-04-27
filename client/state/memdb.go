@@ -35,7 +35,7 @@ type MemDB struct {
 	dynamicManagerPs *dynamicplugins.RegistryState
 
 	// lastHeartbeatOk -> last_heartbeat_ok
-	lastHeartbeatOk *time.Time
+	lastHeartbeatOk time.Time
 
 	logger hclog.Logger
 
@@ -93,7 +93,7 @@ func (m *MemDB) PutDeploymentStatus(allocID string, ds *structs.AllocDeploymentS
 	return nil
 }
 
-func (m *MemDB) GetLastHeartbeatOk() (*time.Time, error) {
+func (m *MemDB) GetLastHeartbeatOk() (time.Time, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.lastHeartbeatOk, nil
@@ -102,7 +102,7 @@ func (m *MemDB) GetLastHeartbeatOk() (*time.Time, error) {
 func (m *MemDB) PutLastHeartbeatOk(t time.Time) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.lastHeartbeatOk = &t
+	m.lastHeartbeatOk = t
 	return nil
 }
 
