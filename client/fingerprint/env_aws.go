@@ -23,6 +23,11 @@ const (
 	// AwsMetadataTimeout is the timeout used when contacting the AWS metadata
 	// services.
 	AwsMetadataTimeout = 2 * time.Second
+
+	// deferProcSpeed notes that a 0 Mhz speed will be replaced by the value
+	// detected by go-psutil in the CPU fingerprinter in the event the CPU
+	// properties of this ec2 instance are non-determinable.
+	deferProcSpeed = 0
 )
 
 // map of instance type to approximate speed, in Mbits/s
@@ -46,7 +51,7 @@ var ec2NetSpeedTable = map[*regexp.Regexp]int{
 	regexp.MustCompile(`.*\.32xlarge`): 10000,
 }
 
-// map of instance type to documented CPU speed, in KHz.
+// map of instance type to documented CPU speed, in MHz.
 //
 // Most values are taken from https://aws.amazon.com/ec2/instance-types/.
 // Values for a1 & m6g (Graviton) are taken from https://en.wikichip.org/wiki/annapurna_labs/alpine/al73400
@@ -55,50 +60,50 @@ var ec2NetSpeedTable = map[*regexp.Regexp]int{
 // In a few cases, AWS has upgraded the generation of CPU while keeping the same
 // instance designation. Since it is possible to launch on the lower performance
 // CPU, that one is used as the spec for the instance type.
-var ec2ProcSpeedTable = map[*regexp.Regexp]int{
+var ec2ProcSpeedTable = map[*regexp.Regexp]float64{
 	// General Purpose
-	regexp.MustCompile(`a1\..*`):                              2300000, // Custom built AWS Graviton
-	regexp.MustCompile(`t3\..*`):                              2500000, // 2.5 GHz Intel Scalable
-	regexp.MustCompile(`t3a\..*`):                             2500000, // 2.5 GHz AMD EPYC 7000 series
-	regexp.MustCompile(`t2\.(nano)|(micro)|(small)|(medium)`): 3300000, // 3.3 GHz Intel Scalable
-	regexp.MustCompile(`t2\.(large)|(xlarge)|(2xlarge)`):      3000000, // 3.0 GHz Intel Scalable
-	regexp.MustCompile(`m6g\..*`):                             2300000, // Custom built AWS Graviton
-	regexp.MustCompile(`m5d?\..*`):                            3100000, // 3.1 GHz Intel Xeon Platinum
-	regexp.MustCompile(`m5ad?\..*`):                           2500000, // 2.5 GHz AMD EPYC 7000 series
-	regexp.MustCompile(`m5d?n\..*`):                           3100000, // 3.1 GHz Intel Xeon Scalable
-	regexp.MustCompile(`m4\..*`):                              2300000, // 2.3 GHz Intel Xeon® E5-2686 v4
+	regexp.MustCompile(`a1\..*`):                              2_300, // Custom built AWS Graviton
+	regexp.MustCompile(`t3\..*`):                              2_500, // 2.5 GHz Intel Scalable
+	regexp.MustCompile(`t3a\..*`):                             2_500, // 2.5 GHz AMD EPYC 7000 series
+	regexp.MustCompile(`t2\.(nano)|(micro)|(small)|(medium)`): 3_300, // 3.3 GHz Intel Scalable
+	regexp.MustCompile(`t2\.(large)|(xlarge)|(2xlarge)`):      3_000, // 3.0 GHz Intel Scalable
+	regexp.MustCompile(`m6g\..*`):                             2_300, // Custom built AWS Graviton
+	regexp.MustCompile(`m5d?\..*`):                            3_100, // 3.1 GHz Intel Xeon Platinum
+	regexp.MustCompile(`m5ad?\..*`):                           2_500, // 2.5 GHz AMD EPYC 7000 series
+	regexp.MustCompile(`m5d?n\..*`):                           3_100, // 3.1 GHz Intel Xeon Scalable
+	regexp.MustCompile(`m4\..*`):                              2_300, // 2.3 GHz Intel Xeon® E5-2686 v4
 
 	// Compute Optimized
-	regexp.MustCompile(`c5d?\.(12xlarge)|(24xlarge)|(metal)`): 3600000, // 3.6 GHz Intel Xeon Scalable
-	regexp.MustCompile(`c5d?\..*`):                            3400000, // 3.4 GHz Intel Xeon Platinum 8000
-	regexp.MustCompile(`c5n\..*`):                             3000000, // 3.0 GHz Intel Xeon Platinum
-	regexp.MustCompile(`c4\..*`):                              2900000, // 2.9 GHz Intel Xeon E5-2666 v3
+	regexp.MustCompile(`c5d?\.(12xlarge)|(24xlarge)|(metal)`): 3_600, // 3.6 GHz Intel Xeon Scalable
+	regexp.MustCompile(`c5d?\..*`):                            3_400, // 3.4 GHz Intel Xeon Platinum 8000
+	regexp.MustCompile(`c5n\..*`):                             3_000, // 3.0 GHz Intel Xeon Platinum
+	regexp.MustCompile(`c4\..*`):                              2_900, // 2.9 GHz Intel Xeon E5-2666 v3
 
 	// Memory Optimized
-	regexp.MustCompile(`r5d?\..*`):                 3100000, // 3.1 GHz Intel Xeon Platinum
-	regexp.MustCompile(`r5ad\..*`):                 2500000, // 2.5 GHz AMD EPYC 7000 series
-	regexp.MustCompile(`r5d?n\..*`):                3100000, // 3.1 GHz Intel Xeon Scalable
-	regexp.MustCompile(`r4\..*`):                   2300000, // 2.3 GHz Intel Xeon E5-2686 v4
-	regexp.MustCompile(`x1e\..*`):                  2300000, // 2.3 GHz Intel Xeon E7-8880 v3
-	regexp.MustCompile(`x1\..*`):                   2300000, // 2.3 GHz Intel Xeon E7-8880 v3
-	regexp.MustCompile(`u-(6)|(9)|(12)tb1\.metal`): 2100000, // 2.1 GHz Intel Xeon Platinum 8176M
-	regexp.MustCompile(`u-(18)|(24)tb1\.metal`):    2700000, // 2.7 GHz Intel Xeon Scalable
-	regexp.MustCompile(`z1d\..*`):                  4000000, // 4.0 GHz Custom Intel Xeon Scalable
+	regexp.MustCompile(`r5d?\..*`):                 3_100, // 3.1 GHz Intel Xeon Platinum
+	regexp.MustCompile(`r5ad\..*`):                 2_500, // 2.5 GHz AMD EPYC 7000 series
+	regexp.MustCompile(`r5d?n\..*`):                3_100, // 3.1 GHz Intel Xeon Scalable
+	regexp.MustCompile(`r4\..*`):                   2_300, // 2.3 GHz Intel Xeon E5-2686 v4
+	regexp.MustCompile(`x1e\..*`):                  2_300, // 2.3 GHz Intel Xeon E7-8880 v3
+	regexp.MustCompile(`x1\..*`):                   2_300, // 2.3 GHz Intel Xeon E7-8880 v3
+	regexp.MustCompile(`u-(6)|(9)|(12)tb1\.metal`): 2_100, // 2.1 GHz Intel Xeon Platinum 8176M
+	regexp.MustCompile(`u-(18)|(24)tb1\.metal`):    2_700, // 2.7 GHz Intel Xeon Scalable
+	regexp.MustCompile(`z1d\..*`):                  4_000, // 4.0 GHz Custom Intel Xeon Scalable
 
 	// Accelerated Computing
-	regexp.MustCompile(`p3\.(2xlarge)|(8xlarge)|(16xlarge)`): 2300000, // 2.3 GHz Intel Xeon E5-2686 v4
-	regexp.MustCompile(`p3\.24xlarge`):                       2500000, // 2.5 GHz Intel Xeon P-8175M
-	regexp.MustCompile(`p2\..*`):                             2300000, // 2.3 GHz Intel Xeon E5-2686 v4 Processor
-	regexp.MustCompile(`inf1\..*`):                           3000000, // 3.0 GHz Intel Xeon Platinum 8275CL
-	regexp.MustCompile(`g4dn\..*`):                           2500000, // 2.5 GHz Cascade Lake 24C
-	regexp.MustCompile(`g3s?\..*`):                           2300000, // 2.3 GHz Intel Xeon E5-2686 v4
-	regexp.MustCompile(`f1\..*`):                             2300000, // 2.3 GHz Intel Xeon E5-2686 v4
+	regexp.MustCompile(`p3\.(2xlarge)|(8xlarge)|(16xlarge)`): 2_300, // 2.3 GHz Intel Xeon E5-2686 v4
+	regexp.MustCompile(`p3\.24xlarge`):                       2_500, // 2.5 GHz Intel Xeon P-8175M
+	regexp.MustCompile(`p2\..*`):                             2_300, // 2.3 GHz Intel Xeon E5-2686 v4 Processor
+	regexp.MustCompile(`inf1\..*`):                           3_000, // 3.0 GHz Intel Xeon Platinum 8275CL
+	regexp.MustCompile(`g4dn\..*`):                           2_500, // 2.5 GHz Cascade Lake 24C
+	regexp.MustCompile(`g3s?\..*`):                           2_300, // 2.3 GHz Intel Xeon E5-2686 v4
+	regexp.MustCompile(`f1\..*`):                             2_300, // 2.3 GHz Intel Xeon E5-2686 v4
 
 	// Storage Optimized
-	regexp.MustCompile(`i3\..*`):   2300000, // 2.3 GHz Intel Xeon E5 2686 v4
-	regexp.MustCompile(`i3en\..*`): 3100000, // 3.1 GHz Intel Xeon Scalable
-	regexp.MustCompile(`d2\..*`):   2400000, // 2.4 GHz Intel Xeon E5-2676 v3
-	regexp.MustCompile(`h1\..*`):   2300000, // 2.3 GHz Intel Xeon E5 2686 v4
+	regexp.MustCompile(`i3\..*`):   2_300, // 2.3 GHz Intel Xeon E5 2686 v4
+	regexp.MustCompile(`i3en\..*`): 3_100, // 3.1 GHz Intel Xeon Scalable
+	regexp.MustCompile(`d2\..*`):   2_400, // 2.4 GHz Intel Xeon E5-2676 v3
+	regexp.MustCompile(`h1\..*`):   2_300, // 2.3 GHz Intel Xeon E5 2686 v4
 }
 
 // EnvAWSFingerprint is used to fingerprint AWS metadata
@@ -202,8 +207,13 @@ func (f *EnvAWSFingerprint) Fingerprint(request *FingerprintRequest, response *F
 		}
 	}
 
-	// copy over CPU information
-	// response.Resources.CPU
+	// copy over CPU speed information
+	//
+	// todo: also need num cores, cpu name, total ticks (see fingerprint.cpu)
+	if mhz := f.frequencyMHz(ec2meta); mhz != deferProcSpeed {
+		response.AddAttribute("cpu.frequency", fmt.Sprintf("%.0f", mhz))
+		f.logger.Debug("detected ec2 cpu frequency", "MHz", log.Fmt("%.0f", mhz))
+	}
 
 	// populate Links
 	response.AddLink("aws.ec2", fmt.Sprintf("%s.%s",
@@ -212,6 +222,28 @@ func (f *EnvAWSFingerprint) Fingerprint(request *FingerprintRequest, response *F
 	response.Detected = true
 
 	return nil
+}
+
+func (f *EnvAWSFingerprint) instanceType(ec2meta *ec2metadata.EC2Metadata) (string, error) {
+	response, err := ec2meta.GetMetadata("instance-type")
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(response), nil
+}
+
+func (f *EnvAWSFingerprint) frequencyMHz(ec2meta *ec2metadata.EC2Metadata) float64 {
+	instanceType, err := f.instanceType(ec2meta)
+	if err != nil {
+		f.logger.Error("error reading instance-type", "error", err)
+		return deferProcSpeed
+	}
+	for regex, mhz := range ec2ProcSpeedTable {
+		if regex.MatchString(instanceType) {
+			return mhz
+		}
+	}
+	return deferProcSpeed
 }
 
 func (f *EnvAWSFingerprint) throughput(request *FingerprintRequest, ec2meta *ec2metadata.EC2Metadata, ip string) int {
@@ -238,17 +270,15 @@ func (f *EnvAWSFingerprint) throughput(request *FingerprintRequest, ec2meta *ec2
 
 // EnvAWSFingerprint uses lookup table to approximate network speeds
 func (f *EnvAWSFingerprint) linkSpeed(ec2meta *ec2metadata.EC2Metadata) int {
-
-	resp, err := ec2meta.GetMetadata("instance-type")
+	instanceType, err := f.instanceType(ec2meta)
 	if err != nil {
 		f.logger.Error("error reading instance-type", "error", err)
 		return 0
 	}
 
-	key := strings.Trim(resp, "\n")
 	netSpeed := 0
 	for reg, speed := range ec2NetSpeedTable {
-		if reg.MatchString(key) {
+		if reg.MatchString(instanceType) {
 			netSpeed = speed
 			break
 		}
@@ -268,11 +298,11 @@ func ec2MetaClient(endpoint string, timeout time.Duration) (*ec2metadata.EC2Meta
 		c = c.WithEndpoint(endpoint)
 	}
 
-	session, err := session.NewSession(c)
+	sess, err := session.NewSession(c)
 	if err != nil {
 		return nil, err
 	}
-	return ec2metadata.New(session, c), nil
+	return ec2metadata.New(sess, c), nil
 }
 
 func isAWS(ec2meta *ec2metadata.EC2Metadata) bool {
